@@ -145,6 +145,7 @@ namespace Utils {
     bool isPlanet(const Node& node);
     long long calcScore(const Output& output);
     vector<Node> solveInsertedTSP(const vector<Node>& stations);
+    vector<Node> insertStations(const vector<Node>& nodes);
 };
 
 /* ============================================== 
@@ -188,13 +189,14 @@ void Output::print() {
 /*TODO: ここで初期解を作成する*/
 State State::initState() {
     State res;
-    // とりあえず、ランダムに宇宙ステーションを配置する。
-    for(int i = 0; i < input.m; i++) {
-        int x = ryuka.rand(1000);
-        int y = ryuka.rand(1000);
-        res.output.stations.push_back(Node(x, y, i, Node::Type::station));
+    res.output.route = Utils::solveInsertedTSP(vector<Node>());
+    res.output.route = Utils::insertStations(res.output.route);
+    for(auto e: res.output.route) {
+        if(!Utils::isPlanet(e)) res.output.stations.push_back(e);
     }
-    res.output.route = Utils::solveInsertedTSP(res.output.stations);
+    sort(res.output.stations.begin(), res.output.stations.end(), [](auto l, auto r) {
+        return l.id < r.id;
+    });
     res.score = Utils::calcScore(res.output);
     return res;
 }
@@ -254,6 +256,31 @@ vector<Node> Utils::solveInsertedTSP(const vector<Node>& stations) {
         route.insert(route.begin() + min_id, e);
     }
     return route;
+}
+
+vector<Node> Utils::insertStations(const vector<Node>& nodes) {
+    vector<pair<int, int>> v;
+    vector<Node> res = nodes;
+    for(int i = 0; i < res.size() - 1; i++) {
+        v.push_back({Utils::calcSquareDist(res[i], res[i+1]), i});
+    } 
+    sort(v.begin(), v.end(), greater<pair<int,int>>());
+    sort(v.begin(), v.begin() + min<int>(input.m, v.size()), [](auto l, auto r) {
+        return l.second < r.second;
+    });
+    vector<pair<int, Node>> inserted;
+    for(auto [_, i]: v) {
+        int nx = min(res[i].x, res[i+1].x) + abs(res[i].x - res[i+1].x) / 2; 
+        int ny = min(res[i].y, res[i+1].y) + abs(res[i].y - res[i+1].y) / 2; 
+        inserted.push_back({i, Node(nx, ny, inserted.size(), Node::Type::station)});
+        if(inserted.size() == input.m) break;
+    }
+    int sl = 0;
+    for(auto [i, node]: inserted) {
+        res.insert(res.begin() + i + 1 + sl, node);
+        sl++;
+    }
+    return res;
 }
 
 int main(int argc, char* argv[]) {
