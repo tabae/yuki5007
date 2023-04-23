@@ -81,6 +81,7 @@ struct Output {
 /*解を管理するクラス*/
 struct State {
     Output output;
+    long long length;
     long long score;
     State() : score(0) {}
     static State initState();
@@ -143,7 +144,8 @@ struct IterationControl {
 namespace Utils {
     int calcSquareDist(const Node& a, const Node& b);
     bool isPlanet(const Node& node);
-    long long calcScore(const Output& output);
+    pair<long long, long long> calcScore(const Output& output);
+    long long calcScoreFromLength(long long length);
     vector<Node> solveInsertedTSP(const vector<Node>& stations);
     vector<Node> insertStations(const vector<Node>& nodes);
 };
@@ -190,21 +192,29 @@ void Output::print() {
 State State::initState() {
     State res;
     res.output.route = Utils::solveInsertedTSP(vector<Node>());
-    res.output.route = Utils::insertStations(res.output.route);
-    for(auto e: res.output.route) {
-        if(!Utils::isPlanet(e)) res.output.stations.push_back(e);
-    }
-    sort(res.output.stations.begin(), res.output.stations.end(), [](auto l, auto r) {
-        return l.id < r.id;
-    });
-    res.score = Utils::calcScore(res.output);
+    auto [score, length] = Utils::calcScore(res.output);
+    res.score = score;
+    res.length = length;
     return res;
 }
 
 /*TODO: ここでinput_stateを変化させた解を作る（局所探索）*/
 State State::generateState(const State& input_state) {
     State res = input_state;
-    res.score = Utils::calcScore(res.output);
+    int i = ryuka.rand(res.output.route.size() - 2) + 1;
+    int j = ryuka.rand(res.output.route.size() - 2) + 1;
+    if(i != j) {
+        res.length -= Utils::calcSquareDist(res.output.route[i], res.output.route[i+1]);
+        res.length -= Utils::calcSquareDist(res.output.route[i], res.output.route[i-1]);
+        res.length -= Utils::calcSquareDist(res.output.route[j], res.output.route[j+1]);
+        res.length -= Utils::calcSquareDist(res.output.route[j], res.output.route[j-1]);
+        swap(res.output.route[i], res.output.route[j]);
+        res.length += Utils::calcSquareDist(res.output.route[i], res.output.route[i+1]);
+        res.length += Utils::calcSquareDist(res.output.route[i], res.output.route[i-1]);
+        res.length += Utils::calcSquareDist(res.output.route[j], res.output.route[j+1]);
+        res.length += Utils::calcSquareDist(res.output.route[j], res.output.route[j-1]);
+        res.score = Utils::calcScoreFromLength(res.length);
+    }
     return res;
 }
 
@@ -219,7 +229,7 @@ bool Utils::isPlanet(const Node& node) {
 }
 
 /*TODO: ここでスコアを計算する*/
-long long Utils::calcScore(const Output& output) {
+pair<long long, long long> Utils::calcScore(const Output& output) {
     long long sum = 0;
     const auto& route = output.route;
     for(int i = 0; i < route.size()-1; i++) {
@@ -233,6 +243,11 @@ long long Utils::calcScore(const Output& output) {
         }
     }
     long long res = (long long)(1e9 / (1e3 + sqrt(sum)));
+    return {res, sum};
+}
+
+long long Utils::calcScoreFromLength(long long length) {
+    long long res = (long long)(1e9 / (1e3 + sqrt(length)));
     return res;
 }
 
@@ -287,11 +302,15 @@ int main(int argc, char* argv[]) {
     toki.init();
     input.read();   
     IterationControl<State> sera;
-    /*山登りの場合は、山登りする時間を第一引数で渡す*/
-    // State ans = sera.climb(1.8, State::initState());
-    /*焼きなましの場合は、焼きなます時間を第一引数で、初期温度を第二引数で、終了温度を第三引数で渡す*/
-    // State ans = sera.anneal(1.8, temp_start, temp_end, State::initState());
-    State ans = State::initState();
+    State ans = sera.climb(0.9, State::initState());
+    ans.output.route = Utils::insertStations(ans.output.route);
+    for(auto e: ans.output.route) {
+        if(!Utils::isPlanet(e)) ans.output.stations.push_back(e);
+    }
+    sort(ans.output.stations.begin(), ans.output.stations.end(), [](auto l, auto r) {
+        return l.id < r.id;
+    });
+    ans.score = Utils::calcScore(ans.output).first;
     ans.output.print();
     cerr << "[INFO] - main - MyScore = " << ans.score << "\n";
 }
