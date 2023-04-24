@@ -85,6 +85,7 @@ struct State {
     long long score;
     State() : score(0) {}
     static State initState();
+    static State initState(const vector<Node>&);
     static State generateState(const State& input_state);
 };
 
@@ -143,7 +144,11 @@ struct IterationControl {
 };
 
 namespace Utils {
+    // スタートは持たず、ゴールまでの道を持つ
+    vector<vector<pair<int,vector<Node>>>> warshall;
+    void resetWarshallTable(const vector<Node>&, const vector<Node>&);
     int calcSquareDist(const Node& a, const Node& b);
+    int calcWeightedSquareDist(const Node& a, const Node& b);
     bool isPlanet(const Node& node);
     bool isStart(const Node& node);
     pair<long long, long long> calcScore(const Output& output);
@@ -203,6 +208,15 @@ State State::initState() {
     return res;
 }
 
+State State::initState(const vector<Node>& stations) {
+    State res;
+    res.output.route = Utils::solveInsertedTSP(stations);
+    auto [score, length] = Utils::calcScore(res.output);
+    res.score = score;
+    res.length = length;
+    return res;
+}
+
 /*TODO: ここでinput_stateを変化させた解を作る（局所探索）*/
 State State::generateState(const State& input_state) {
     State res = input_state;
@@ -212,10 +226,10 @@ State State::generateState(const State& input_state) {
     int j2 = res.output.route[j].to;
     bool chk = (i != j) && (i != j2) && (j != i2); 
     if(chk) {
-        res.length -= input.a * input.a * Utils::calcSquareDist(res.output.route[i], res.output.route[i2]);
-        res.length -= input.a * input.a * Utils::calcSquareDist(res.output.route[j], res.output.route[j2]);
-        res.length += input.a * input.a * Utils::calcSquareDist(res.output.route[i], res.output.route[j]);
-        res.length += input.a * input.a * Utils::calcSquareDist(res.output.route[j2], res.output.route[i2]);
+        res.length -= Utils::calcWeightedSquareDist(res.output.route[i], res.output.route[i2]);
+        res.length -= Utils::calcWeightedSquareDist(res.output.route[j], res.output.route[j2]);
+        res.length += Utils::calcWeightedSquareDist(res.output.route[i], res.output.route[j]);
+        res.length += Utils::calcWeightedSquareDist(res.output.route[j2], res.output.route[i2]);
         res.output.route[i].to = j;
         res.output.route[j2].from = i2;
         int cur = j;
@@ -234,10 +248,42 @@ State State::generateState(const State& input_state) {
     return res;
 }
 
+void Utils::resetWarshallTable(const vector<Node>& planets, const vector<Node>& stations) {
+    vector<Node> nodes;
+    for(auto e : planets) nodes.push_back(e);
+    for(auto e : stations) nodes.push_back(e);
+    const int n = nodes.size();
+    warshall.resize(n, vector<pair<int,vector<Node>>>(n, {1<<30, vector<Node>()}));
+    for(int k = 0; k < n; k++) {
+        for(int i = 0; i < n; i++) {
+            for(int j = 0; j < n; j++) {
+                const int d1 = warshall[i][j].first;
+                const int d2 = warshall[i][k].first + warshall[k][j].first;
+                if(d2 < d1) {
+                    warshall[i][j].first = d2;
+                    warshall[i][j].second = warshall[i][k].second;
+                    for(auto e : warshall[k][j].second) warshall[i][j].second.push_back(e);
+                }
+            }
+        }
+    }
+}
+
 int Utils::calcSquareDist(const Node& a, const Node& b) {
     const int dx = a.x - b.x;
     const int dy = a.y - b.y;
     return dx * dx + dy * dy;
+}
+
+int Utils::calcWeightedSquareDist(const Node& a, const Node& b) {
+    const int dx = a.x - b.x;
+    const int dy = a.y - b.y;
+    const int s = dx * dx + dy * dy;
+    int res;
+    if(Utils::isPlanet(a) && Utils::isPlanet(b)) res = s * input.a * input.a;
+    else if(!Utils::isPlanet(a) && !Utils::isPlanet(b)) res = s;
+    else res = s * input.a; 
+    return res;
 }
 
 bool Utils::isStart(const Node& node) {
@@ -456,11 +502,12 @@ pair<vector<Node>, vector<Node>> Utils::goThroughStations(const vector<Node>& ro
 int main(int argc, char* argv[]) {
     toki.init();
     input.read();   
+    vector<Node> stations = Utils::initStations();
     IterationControl<State> sera;
-    State ans = sera.anneal(0.8, 1e5, 50, State::initState());
+    State ans = sera.anneal(0.8, 1e5, 50, State::initState(stations));
     //State ans = sera.climb(0.8, State::initState());
     //State ans = State::initState();
-    auto [route, stations] = Utils::goThroughStations(ans.output.route);
+    auto [route, _] = Utils::goThroughStations(ans.output.route);
     ans.output.route = route;
     ans.output.stations = stations;
     ans.score = Utils::calcScore(ans.output).first;
