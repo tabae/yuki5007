@@ -151,7 +151,7 @@ namespace Utils {
     vector<Node> initStations();
     vector<Node> solveInsertedTSP(const vector<Node>& stations);
     vector<Node> insertStations(const vector<Node>& nodes);
-    vector<Node> goThroughStations(const vector<Node>& nodes);
+    pair<vector<Node>, vector<Node>> goThroughStations(const vector<Node>& nodes);
     vector<Node> rearrangeRoute(const vector<Node>& nodes);
 };
 
@@ -269,7 +269,6 @@ pair<long long, long long> Utils::calcScore(const Output& output) {
         cur = nxt;
         if(Utils::isStart(cur)) break;
     }
-    cerr << "[DEBUG] - Utils::calcScore - debug: " << debug << endl;
     long long res = (long long)(1e9 / (1e3 + sqrt(sum)));
     return {res, sum};
 }
@@ -365,8 +364,10 @@ vector<Node> Utils::initStations() {
             num[cluster[i]]++;
         }
         for(int i = 0; i < input.m; i++) {
-            w_x[i] /= num[i];
-            w_y[i] /= num[i];
+            if(num[i] > 0) {
+                w_x[i] /= num[i];
+                w_y[i] /= num[i];
+            }
         }
         for(int i = 0; i < input.n; i++) {
             int min_dist = 1<<30, min_id = -1;
@@ -384,9 +385,11 @@ vector<Node> Utils::initStations() {
     }
     if(count >= iter_max) {
         cerr << "[WARNING] - Utils::initStations - Failed to k-means" << endl;
+        /*
         for(int i = 0; i < input.n; i++) {
             cerr << cluster[i] << " " << input.planets[i].x << " " << input.planets[i].y << endl;
         }
+        */
     }
     vector<Node> res(input.m);
     vector<long long> w_x(input.m, 0);
@@ -398,8 +401,10 @@ vector<Node> Utils::initStations() {
         num[cluster[i]]++;
     }
     for(int i = 0; i < input.m; i++) {
-        w_x[i] /= num[i];
-        w_y[i] /= num[i];
+        if(num[i] > 0) {
+            w_x[i] /= num[i];
+            w_y[i] /= num[i];
+        }
     }
     for(int i = 0; i < input.m; i++) {
         res[i] = Node(w_x[i], w_y[i], i, Node::Type::station);
@@ -407,16 +412,17 @@ vector<Node> Utils::initStations() {
     return res;
 }
 
-vector<Node> Utils::goThroughStations(const vector<Node>& route) {
+pair<vector<Node>, vector<Node>> Utils::goThroughStations(const vector<Node>& route) {
     vector<Node> res;
     vector<Node> stations = Utils::initStations();
     Node cur = route.front();
     int prev = -1;
     while(true) {
         Node nxt = route[cur.to];
+        int cur_pos = res.size();
         cur.from = prev;
-        cur.to = res.size() + 1;
-        prev = res.size() + 1;
+        cur.to = cur_pos + 1;
+        prev = cur_pos;
         res.push_back(cur);
         int min_dist = input.a * Utils::calcSquareDist(cur, nxt);
         Node min_node;
@@ -431,38 +437,33 @@ vector<Node> Utils::goThroughStations(const vector<Node>& route) {
         }
         if(insert) {
             cur.to = min_node.id;
-            prev = res.size() + 1;
-            min_node.from = res.size() - 1;
-            min_node.to = res.size() + 1;
+            int cur_pos = res.size();
+            prev = cur_pos;
+            min_node.from = cur_pos - 1;
+            min_node.to = cur_pos + 1;
             res.push_back(min_node);
         }
         if(Utils::isStart(nxt)) {
             res[0].from = res.size() - 1;
+            res[res.size()-1].to = 0;
             break;
         }
         cur = nxt;
     }
-    return res;
+    return {res, stations};
 }
 
 int main(int argc, char* argv[]) {
     toki.init();
     input.read();   
     IterationControl<State> sera;
-    State ans = sera.climb(0.4, State::initState());
+    State ans = sera.anneal(0.8, 1e5, 50, State::initState());
+    //State ans = sera.climb(0.8, State::initState());
     //State ans = State::initState();
-    cerr << "[Debug] - main - Starts insertStations ..." << endl;
-    ans.output.route = Utils::goThroughStations(ans.output.route);
-    vector<Node> stations;
-    ans.output.stations.resize(input.m);
-    for(auto e: ans.output.route) {
-        if(!Utils::isPlanet(e)) {
-            ans.output.stations[e.id] = e;
-        }
-    }
-    cerr << "[Debug] - main - Starts calcScore ..." << endl;
+    auto [route, stations] = Utils::goThroughStations(ans.output.route);
+    ans.output.route = route;
+    ans.output.stations = stations;
     ans.score = Utils::calcScore(ans.output).first;
-    cerr << "[Debug] - main - Starts rearrangeRoute ..." << endl;
     ans.output.route = Utils::rearrangeRoute(ans.output.route);
     ans.output.print();
     cerr << "[INFO] - main - MyScore = " << ans.score << "\n";
