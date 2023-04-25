@@ -56,9 +56,9 @@ struct Node {
         planet,
         station
     };
-    int x, y, id, to, from;
+    int x, y, id;
     Type type;
-    Node() : to(-1), from(-1) {};
+    Node() {};
     Node(int, int, int, Type);
 };
 
@@ -87,7 +87,7 @@ struct State {
     static State initState();
     static State initState(const vector<Node>&);
     static State generateState(const State& input_state);
-    void changeState(double, int&);
+    void changeState(double, int&, int, int);
 };
 
 /*イテレーション管理クラス*/
@@ -126,11 +126,16 @@ struct IterationControl {
         STATE best_state = initial_state;
         double elapsed_time = 0;
         cerr << "[INFO] - IterationControl::anneal - Starts annealing...\n";
+        const int rsize = best_state.output.route.size();
         while(elapsed_time + average_time < time_limit) {
             double normalized_time = elapsed_time / time_limit;
             double temp_current = pow(temp_start, 1.0 - normalized_time) * pow(temp_end, normalized_time);
-            best_state.changeState(temp_current, swap_counter);
-            iteration_counter++;
+            for(int i = 0; i < rsize-1; i++) {
+                for(int j = 0; j < rsize-1; j++) {
+                    iteration_counter++;
+                    best_state.changeState(temp_current, swap_counter, i, j);
+                }
+            }
             elapsed_time = toki.gettime() - start_time;
             average_time = elapsed_time / iteration_counter;
         }
@@ -140,10 +145,6 @@ struct IterationControl {
 };
 
 namespace Utils {
-    // スタートは持たず、ゴールまでの道を持つ
-    vector<vector<pair<int,vector<Node>>>> warshall;
-    int warshall_planets;
-    void resetWarshallTable(const vector<Node>&, const vector<Node>&);
     int calcSquareDist(const Node& a, const Node& b);
     int calcWeightedSquareDist(const Node& a, const Node& b);
     bool isPlanet(const Node& node);
@@ -152,9 +153,7 @@ namespace Utils {
     long long calcScoreFromLength(long long length);
     vector<Node> initStations();
     vector<Node> solveInsertedTSP(const vector<Node>& stations);
-    vector<Node> insertStations(const vector<Node>& nodes);
-    pair<vector<Node>, vector<Node>> goThroughStations(const vector<Node>& nodes);
-    vector<Node> rearrangeRoute(const vector<Node>& nodes);
+    pair<vector<Node>, vector<Node>> goThroughStations(vector<Node>, int);
 };
 
 /* ============================================== 
@@ -214,11 +213,10 @@ State State::initState(const vector<Node>& stations) {
     return res;
 }
 
-void State::changeState(double temp_current, int &swap_counter) {
-    int i = ryuka.rand(output.route.size());
-    int j = ryuka.rand(output.route.size());
-    int i2 = output.route[i].to;
-    int j2 = output.route[j].to;
+void State::changeState(double temp_current, int &swap_counter, int i, int j) {
+    if(i > j) swap(i, j);
+    int i2 = i+1;
+    int j2 = j+1;
     bool chk = (i != j) && (i != j2) && (j != i2); 
     if(!chk) return;
     long long org_score = score;
@@ -231,19 +229,7 @@ void State::changeState(double temp_current, int &swap_counter) {
     long long delta = new_score - org_score;
     if(delta > 0 || ryuka.pjudge(exp(1.0 * delta / temp_current)) ) {
         swap_counter++;
-        output.route[i].to = j;
-        output.route[j2].from = i2;
-        int cur = j;
-        while(true) {
-            int nxt = output.route[cur].from;
-            swap(output.route[cur].from, output.route[cur].to);
-            if(cur == j) output.route[cur].from = i;
-            if(cur == i2) {
-                output.route[cur].to = j2;
-                break;
-            }
-            cur = nxt;
-        }
+        reverse(output.route.begin() + i2, output.route.begin() + j2);
         length = new_len;
         score = Utils::calcScoreFromLength(length);        
     }
@@ -252,55 +238,23 @@ void State::changeState(double temp_current, int &swap_counter) {
 /*TODO: ここでinput_stateを変化させた解を作る（局所探索）*/
 State State::generateState(const State& input_state) {
     State res = input_state;
-    int i = ryuka.rand(res.output.route.size());
-    int j = ryuka.rand(res.output.route.size());
-    int i2 = res.output.route[i].to;
-    int j2 = res.output.route[j].to;
+    int i = ryuka.rand(res.output.route.size() - 1);
+    int j = ryuka.rand(res.output.route.size() - 1);
+    if(j < i) swap(i, j);
+    int i2 = i+1;
+    int j2 = j+1;
     bool chk = (i != j) && (i != j2) && (j != i2); 
     if(chk) {
         res.length -= Utils::calcWeightedSquareDist(res.output.route[i], res.output.route[i2]);
         res.length -= Utils::calcWeightedSquareDist(res.output.route[j], res.output.route[j2]);
         res.length += Utils::calcWeightedSquareDist(res.output.route[i], res.output.route[j]);
         res.length += Utils::calcWeightedSquareDist(res.output.route[j2], res.output.route[i2]);
-        res.output.route[i].to = j;
-        res.output.route[j2].from = i2;
-        int cur = j;
-        while(true) {
-            int nxt = res.output.route[cur].from;
-            swap(res.output.route[cur].from, res.output.route[cur].to);
-            if(cur == j) res.output.route[cur].from = i;
-            if(cur == i2) {
-                res.output.route[cur].to = j2;
-                break;
-            }
-            cur = nxt;
-        }
+        reverse(res.output.route.begin() + i2, res.output.route.begin() + j2);
         res.score = Utils::calcScoreFromLength(res.length);
     }
     return res;
 }
 
-void Utils::resetWarshallTable(const vector<Node>& planets, const vector<Node>& stations) {
-    vector<Node> nodes;
-    for(auto e : planets) nodes.push_back(e);
-    Utils::warshall_planets = planets.size();
-    for(auto e : stations) nodes.push_back(e);
-    const int n = nodes.size();
-    warshall.resize(n, vector<pair<int,vector<Node>>>(n, {1<<30, vector<Node>()}));
-    for(int k = 0; k < n; k++) {
-        for(int i = 0; i < n; i++) {
-            for(int j = 0; j < n; j++) {
-                const int d1 = warshall[i][j].first;
-                const int d2 = warshall[i][k].first + warshall[k][j].first;
-                if(d2 < d1) {
-                    warshall[i][j].first = d2;
-                    warshall[i][j].second = warshall[i][k].second;
-                    for(auto e : warshall[k][j].second) warshall[i][j].second.push_back(e);
-                }
-            }
-        }
-    }
-}
 
 int Utils::calcSquareDist(const Node& a, const Node& b) {
     const int dx = a.x - b.x;
@@ -331,22 +285,17 @@ bool Utils::isPlanet(const Node& node) {
 pair<long long, long long> Utils::calcScore(const Output& output) {
     long long sum = 0;
     const auto& route = output.route;
-    int debug = 0;
-    Node cur = route.front();
-    assert(Utils::isStart(cur));
-    while(true) {
-        Node nxt = route[cur.to];
+    for(int i = 0; i < route.size() - 1; i++) {
+        const Node& cur = route[i];
+        const Node& nxt = route[i+1];
         const long long d2 = Utils::calcSquareDist(cur, nxt);
         if(isPlanet(cur) && isPlanet(nxt)) {
             sum += input.a * input.a * d2; 
         } else if(!isPlanet(cur) && !isPlanet(nxt)) {
             sum += d2;
         } else {
-            debug++;
             sum += input.a * d2;
         }
-        cur = nxt;
-        if(Utils::isStart(cur)) break;
     }
     long long res = (long long)(1e9 / (1e3 + sqrt(sum)));
     return {res, sum};
@@ -357,28 +306,12 @@ long long Utils::calcScoreFromLength(long long length) {
     return res;
 }
 
-vector<Node> Utils::rearrangeRoute(const vector<Node>& route) {
-    vector<Node> res;
-    Node cur = route.front();
-    while(true) {
-        Node nxt = route[cur.to];
-        res.push_back(cur);
-        if(Utils::isStart(nxt)) {
-            res.push_back(nxt);
-            break;
-        }
-        cur = nxt;
-    }
-    return res;
-}
-
 vector<Node> Utils::solveInsertedTSP(const vector<Node>& stations) {
     vector<Node> nodes, route;
     for(auto e: input.planets) if(e.id != 0) nodes.push_back(e);
     for(auto e: stations) nodes.push_back(e);
     route.push_back(input.planets.front());
     route.push_back(input.planets.front());
-    shuffle(route.begin(), route.end(), ryuka.engine);
     for(auto e: nodes) {
         int min_dist = 1<<30, min_id = -1;
         for(int i = 0; i < route.size() - 1; i++) {
@@ -391,38 +324,7 @@ vector<Node> Utils::solveInsertedTSP(const vector<Node>& stations) {
         assert(min_id != -1);
         route.insert(route.begin() + min_id, e);
     }
-    for(int i = 0; i < route.size() - 2; i++) route[i].to = i+1;
-    for(int i = 1; i < route.size() - 1; i++) route[i].from = i-1;
-    route[route.size()-2].to = 0;
-    route[0].from = route.size() - 2;
-    route.pop_back();
     return route;
-}
-
-vector<Node> Utils::insertStations(const vector<Node>& nodes) {
-    vector<pair<int, int>> v;
-    vector<Node> res = nodes;
-    for(int i = 0; i < res.size(); i++) {
-        v.push_back({Utils::calcSquareDist(res[i], res[res[i].to]), i});
-    } 
-    sort(v.begin(), v.end(), greater<pair<int,int>>());
-    sort(v.begin(), v.begin() + min<int>(input.m, v.size()), [](auto l, auto r) {
-        return l.second < r.second;
-    });
-    vector<pair<int, Node>> inserted;
-    for(auto [_, i]: v) {
-        int nx = min(res[i].x, res[res[i].to].x) + abs(res[i].x - res[res[i].to].x) / 2; 
-        int ny = min(res[i].y, res[res[i].to].y) + abs(res[i].y - res[res[i].to].y) / 2; 
-        inserted.push_back({i, Node(nx, ny, inserted.size(), Node::Type::station)});
-        if(inserted.size() == input.m) break;
-    }
-    for(auto [i, node]: inserted) {
-        int ri = res.size();
-        node.to = res[i].to;
-        res[i].to = ri;
-        res.push_back(node);
-    }
-    return res;
 }
 
 vector<Node> Utils::initStations() {
@@ -495,59 +397,47 @@ vector<Node> Utils::initStations() {
     return res;
 }
 
-pair<vector<Node>, vector<Node>> Utils::goThroughStations(const vector<Node>& route) {
-    vector<Node> res;
+pair<vector<Node>, vector<Node>> Utils::goThroughStations(vector<Node> route, int iter_max) {
     vector<Node> stations = Utils::initStations();
-    Node cur = route.front();
-    int prev = -1;
-    while(true) {
-        Node nxt = route[cur.to];
-        int cur_pos = res.size();
-        cur.from = prev;
-        cur.to = cur_pos + 1;
-        prev = cur_pos;
-        res.push_back(cur);
-        int min_dist = input.a * Utils::calcSquareDist(cur, nxt);
-        Node min_node;
-        bool insert = false;
-        for(auto st: stations) {
-            int dist = Utils::calcSquareDist(cur, st) + Utils::calcSquareDist(st, nxt);
-            if(dist < min_dist) {
-                min_dist = dist;
-                min_node = st;
-                insert = true;
+    vector<Node> nodes = input.planets;
+    for(auto e: stations) nodes.push_back(e);
+    for(int it = 0; it < iter_max; it++) {
+        vector<Node> res;
+        for(int i = 0; i < route.size() - 1; i++) {
+            const Node& cur = route[i];
+            const Node& nxt = route[i+1];
+            res.push_back(cur);
+            int min_dist = Utils::calcWeightedSquareDist(cur, nxt);
+            int min_id = -1;
+            for(int j = 0; j < nodes.size(); j++) {
+                int dist = Utils::calcWeightedSquareDist(cur, nodes[j])
+                            + Utils::calcWeightedSquareDist(nodes[j], nxt);
+                if(min_dist > dist) {
+                    min_dist = dist;
+                    min_id = j;
+                }
+            }
+            if(min_id >= 0) {
+                res.push_back(nodes[min_id]);
             }
         }
-        if(insert) {
-            cur.to = min_node.id;
-            int cur_pos = res.size();
-            prev = cur_pos;
-            min_node.from = cur_pos - 1;
-            min_node.to = cur_pos + 1;
-            res.push_back(min_node);
-        }
-        if(Utils::isStart(nxt)) {
-            res[0].from = res.size() - 1;
-            res[res.size()-1].to = 0;
-            break;
-        }
-        cur = nxt;
+        res.push_back(route.back());
+        route = res;
     }
-    return {res, stations};
+    return {route, stations};
 }
 
 int main(int argc, char* argv[]) {
     toki.init();
     input.read();   
     IterationControl<State> sera;
-    State ans = sera.anneal(0.4, 1e4, 1, State::initState());
+    State ans = sera.anneal(0.4, 1e5, 10, State::initState());
     //State ans = sera.climb(0.8, State::initState());
     //State ans = State::initState();
-    auto [route, stations] = Utils::goThroughStations(ans.output.route);
+    auto [route, stations] = Utils::goThroughStations(ans.output.route, 1000);
     ans.output.route = route;
     ans.output.stations = stations;
     ans.score = Utils::calcScore(ans.output).first;
-    ans.output.route = Utils::rearrangeRoute(ans.output.route);
     ans.output.print();
     cerr << "[INFO] - main - MyScore = " << ans.score << "\n";
 }
