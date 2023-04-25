@@ -87,6 +87,7 @@ struct State {
     static State initState();
     static State initState(const vector<Node>&);
     static State generateState(const State& input_state);
+    void changeState(double, int&);
 };
 
 /*イテレーション管理クラス*/
@@ -128,12 +129,7 @@ struct IterationControl {
         while(elapsed_time + average_time < time_limit) {
             double normalized_time = elapsed_time / time_limit;
             double temp_current = pow(temp_start, 1.0 - normalized_time) * pow(temp_end, normalized_time);
-            STATE current_state = STATE::generateState(best_state);
-            long long delta = current_state.score - best_state.score;
-            if(delta > 0 || ryuka.pjudge(exp(1.0 * delta / temp_current)) ) {
-                swap(best_state, current_state);
-                swap_counter++;
-            }
+            best_state.changeState(temp_current, swap_counter);
             iteration_counter++;
             elapsed_time = toki.gettime() - start_time;
             average_time = elapsed_time / iteration_counter;
@@ -146,6 +142,7 @@ struct IterationControl {
 namespace Utils {
     // スタートは持たず、ゴールまでの道を持つ
     vector<vector<pair<int,vector<Node>>>> warshall;
+    int warshall_planets;
     void resetWarshallTable(const vector<Node>&, const vector<Node>&);
     int calcSquareDist(const Node& a, const Node& b);
     int calcWeightedSquareDist(const Node& a, const Node& b);
@@ -217,6 +214,41 @@ State State::initState(const vector<Node>& stations) {
     return res;
 }
 
+void State::changeState(double temp_current, int &swap_counter) {
+    int i = ryuka.rand(output.route.size());
+    int j = ryuka.rand(output.route.size());
+    int i2 = output.route[i].to;
+    int j2 = output.route[j].to;
+    bool chk = (i != j) && (i != j2) && (j != i2); 
+    if(!chk) return;
+    long long org_score = score;
+    long long new_len = length;
+    new_len -= Utils::calcWeightedSquareDist(output.route[i], output.route[i2]);
+    new_len -= Utils::calcWeightedSquareDist(output.route[j], output.route[j2]);
+    new_len += Utils::calcWeightedSquareDist(output.route[i], output.route[j]);
+    new_len += Utils::calcWeightedSquareDist(output.route[j2],output.route[i2]);
+    long long new_score = Utils::calcScoreFromLength(new_len);
+    long long delta = new_score - org_score;
+    if(delta > 0 || ryuka.pjudge(exp(1.0 * delta / temp_current)) ) {
+        swap_counter++;
+        output.route[i].to = j;
+        output.route[j2].from = i2;
+        int cur = j;
+        while(true) {
+            int nxt = output.route[cur].from;
+            swap(output.route[cur].from, output.route[cur].to);
+            if(cur == j) output.route[cur].from = i;
+            if(cur == i2) {
+                output.route[cur].to = j2;
+                break;
+            }
+            cur = nxt;
+        }
+        length = new_len;
+        score = Utils::calcScoreFromLength(length);        
+    }
+}
+
 /*TODO: ここでinput_stateを変化させた解を作る（局所探索）*/
 State State::generateState(const State& input_state) {
     State res = input_state;
@@ -251,6 +283,7 @@ State State::generateState(const State& input_state) {
 void Utils::resetWarshallTable(const vector<Node>& planets, const vector<Node>& stations) {
     vector<Node> nodes;
     for(auto e : planets) nodes.push_back(e);
+    Utils::warshall_planets = planets.size();
     for(auto e : stations) nodes.push_back(e);
     const int n = nodes.size();
     warshall.resize(n, vector<pair<int,vector<Node>>>(n, {1<<30, vector<Node>()}));
@@ -450,6 +483,10 @@ vector<Node> Utils::initStations() {
         if(num[i] > 0) {
             w_x[i] /= num[i];
             w_y[i] /= num[i];
+        } else {
+            int z = ryuka.rand(input.n);
+            w_x[i] = clamp(input.planets[z].x + ryuka.rand(100) - 50, 1, 999);
+            w_y[i] = clamp(input.planets[z].y + ryuka.rand(100) - 50, 1, 999);
         }
     }
     for(int i = 0; i < input.m; i++) {
@@ -502,12 +539,11 @@ pair<vector<Node>, vector<Node>> Utils::goThroughStations(const vector<Node>& ro
 int main(int argc, char* argv[]) {
     toki.init();
     input.read();   
-    vector<Node> stations = Utils::initStations();
     IterationControl<State> sera;
-    State ans = sera.anneal(0.8, 1e5, 50, State::initState(stations));
+    State ans = sera.anneal(0.4, 1e4, 1, State::initState());
     //State ans = sera.climb(0.8, State::initState());
     //State ans = State::initState();
-    auto [route, _] = Utils::goThroughStations(ans.output.route);
+    auto [route, stations] = Utils::goThroughStations(ans.output.route);
     ans.output.route = route;
     ans.output.stations = stations;
     ans.score = Utils::calcScore(ans.output).first;
