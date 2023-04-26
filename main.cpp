@@ -153,8 +153,8 @@ namespace Utils {
     long long calcScoreFromLength(long long length);
     vector<Node> initStations();
     vector<Node> solveInsertedTSP(const vector<Node>& stations);
-    pair<vector<Node>, vector<Node>> goThroughStations(vector<Node>, int);
-    vector<Node> optimizeStations(const vector<Node>&);
+    vector<Node> goThroughStations(vector<Node>, const vector<Node>& stations, int);
+    pair<vector<Node>, vector<Node>> optimizeStations(const vector<Node>&);
 };
 
 /* ============================================== 
@@ -399,8 +399,7 @@ vector<Node> Utils::initStations() {
     return res;
 }
 
-pair<vector<Node>, vector<Node>> Utils::goThroughStations(vector<Node> route, int iter_max) {
-    vector<Node> stations = Utils::initStations();
+vector<Node> Utils::goThroughStations(vector<Node> route, const vector<Node>& stations, int iter_max) {
     vector<Node> nodes = input.planets;
     for(auto e: stations) nodes.push_back(e);
     for(int it = 0; it < iter_max; it++) {
@@ -426,10 +425,10 @@ pair<vector<Node>, vector<Node>> Utils::goThroughStations(vector<Node> route, in
         res.push_back(route.back());
         route = res;
     }
-    return {route, stations};
+    return route;
 }
 
-vector<Node> Utils::optimizeStations(const vector<Node>& route) {
+pair<vector<Node>, vector<Node>> Utils::optimizeStations(const vector<Node>& route) {
     vector<int> w_x(input.m, 0);
     vector<int> w_y(input.m, 0);
     vector<int> num(input.m, 0);
@@ -455,7 +454,14 @@ vector<Node> Utils::optimizeStations(const vector<Node>& route) {
         }
         stations.push_back(Node(w_x[i], w_y[i], i, Node::Type::station));
     }
-    return stations;
+    vector<Node> ret_route = route;
+    for(int i = 0; i < ret_route.size(); i++) {
+        if(!Utils::isPlanet(ret_route[i])) {
+            ret_route[i].x = stations[ret_route[i].id].x;
+            ret_route[i].y = stations[ret_route[i].id].y;
+        }
+    }
+    return {ret_route, stations};
 } 
 
 int main(int argc, char* argv[]) {
@@ -467,11 +473,11 @@ int main(int argc, char* argv[]) {
     for(int t = 0; t < 80; t++) {
         IterationControl<State> sera;
         State ans = sera.anneal(0.01, 1e5, 1, State::initState());
-        //State ans = sera.climb(0.8, State::initState());
-        //State ans = State::initState();
-        auto [route, stations] = Utils::goThroughStations(ans.output.route, 10);
+        ans.output.stations = Utils::initStations();
+        ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 10);
+        auto [route, stations] = Utils::optimizeStations(ans.output.route);
         ans.output.route = route;
-        ans.output.stations = Utils::optimizeStations(ans.output.route);
+        ans.output.stations = stations;
         ans.score = Utils::calcScore(ans.output).first;
         if(ans.score > best_score) {
             best_score = ans.score;
