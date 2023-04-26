@@ -507,17 +507,20 @@ int main(int argc, char* argv[]) {
 
     long long best_score = 0;
     State best;
-    for(int t = 0; t < 150; t++) {
+    for(int t = 0; t < 1000; t++) {
+        if(t % 10 == 0) {
+            if(toki.elapsed() > 0.9) break;
+        }
         IterationControl<State> sera;
         //State ans = sera.anneal(0.01, 1e5, 1, State::initState());
-        State ans = sera.climb(0.0025, State::initState());
+        State ans = sera.climb(0.001, State::initState());
         auto initial_stations = Utils::initStations();
         ans.output.route = Utils::goThroughStations(ans.output.route, initial_stations, 10);
         auto [_route, _stations] = Utils::optimizeStations(ans.output.route);
         ans.output.route = _route;
         ans.output.stations = _stations;
         //ans = sera.anneal(0.01, 1e5, 1, ans);
-        ans = sera.climb(0.0025, ans);
+        ans = sera.climb(0.001, ans);
         ans.output.route = Utils::goThroughStations(ans.output.route, initial_stations, 10);
         auto [route, stations] = Utils::optimizeStations(ans.output.route);
         ans.output.route = route;
