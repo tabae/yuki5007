@@ -109,23 +109,19 @@ struct IterationControl {
     double start_time;
     IterationControl() : iteration_counter(0), swap_counter(0) {}
     /*山登り法*/
-    STATE climb(double time_limit, STATE initial_state) {
-        start_time = toki.gettime();
+    STATE climb(int iter_max, STATE initial_state) {
         STATE best_state = initial_state;
-        double time_stamp = start_time;
         #ifdef DEBUG
         cerr << "[INFO] - IterationControl::climb - Starts climbing...\n";
         #endif
         const int rsize = best_state.output.route.size();
-        while(time_stamp - start_time < time_limit) {
+        for(int it = 0; it < iter_max; it++) {
             for(int i = 0; i < rsize-1; i++) {
-                for(int j = i+1; j < rsize-1; j++) {
+                for(int j = i+2; j < rsize-1; j++) {
                     iteration_counter++;
                     best_state.changeStateClimb(swap_counter, i, j);
                 }
             }
-            iteration_counter++;
-            time_stamp = toki.gettime();
         }
         #ifdef DEBUG
         cerr << "[INFO] - IterationControl::climb - Iterated " << iteration_counter << " times and swapped " << swap_counter << " times.\n";
@@ -232,24 +228,21 @@ void State::changeState(double temp_current, int &swap_counter, int i, int j) {
 }
 
 void State::changeStateClimb(int &swap_counter, int i, int j) {
-    if(i > j) swap(i, j);
-    int i2 = i+1;
-    int j2 = j+1;
-    bool chk = (i != j) && (i != j2) && (j != i2); 
-    if(!chk) return;
-    long long org_score = score;
+    const int i2 = i+1;
+    const int j2 = j+1;
+    const long long org_score = score;
     long long new_len = length;
     new_len -= Utils::calcWeightedSquareDist(output.route[i], output.route[i2]);
     new_len -= Utils::calcWeightedSquareDist(output.route[j], output.route[j2]);
     new_len += Utils::calcWeightedSquareDist(output.route[i], output.route[j]);
     new_len += Utils::calcWeightedSquareDist(output.route[j2],output.route[i2]);
-    long long new_score = Utils::calcScoreFromLength(new_len);
-    long long delta = new_score - org_score;
-    if(delta > 0) {
+    //const long long new_score = Utils::calcScoreFromLength(new_len);
+    //const long long delta = new_score - org_score;
+    const long long delta = new_len - length;
+    if(delta < 0) {
         swap_counter++;
         reverse(output.route.begin() + i2, output.route.begin() + j2);
         length = new_len;
-        score = Utils::calcScoreFromLength(length);        
     }
 }
 
@@ -342,9 +335,10 @@ void Utils::initPlanetsDist() {
 
 vector<Node> Utils::solveInsertedTSP() {
     vector<Node> route;
+    route.reserve(input.n);
     vector<Node> nodes = input.planets;
-    route.push_back(input.planets.front());
-    route.push_back(input.planets.front());
+    route.emplace_back(input.planets.front());
+    route.emplace_back(input.planets.front());
     shuffle(nodes.begin(), nodes.end(), ryuka.engine);
     for(auto e: nodes) {
         int min_dist = 1<<30, min_id = -1;
@@ -424,14 +418,16 @@ vector<Node> Utils::initStations() {
 }
 
 vector<Node> Utils::goThroughStations(vector<Node> route, const vector<Node>& stations, int iter_max) {
-    vector<Node> nodes = input.planets;
-    for(auto e: stations) nodes.push_back(e);
+    vector<Node> nodes;
+    nodes.reserve(input.n + input.m);
+    for(auto e: input.planets) nodes.emplace_back(e);
+    for(auto e: stations) nodes.emplace_back(e);
     for(int it = 0; it < iter_max; it++) {
         vector<Node> res;
         for(int i = 0; i < route.size() - 1; i++) {
             const Node& cur = route[i];
             const Node& nxt = route[i+1];
-            res.push_back(cur);
+            res.emplace_back(cur);
             int min_dist = Utils::calcWeightedSquareDist(cur, nxt);
             int min_id = -1;
             for(int j = 0; j < nodes.size(); j++) {
@@ -443,10 +439,10 @@ vector<Node> Utils::goThroughStations(vector<Node> route, const vector<Node>& st
                 }
             }
             if(min_id >= 0) {
-                res.push_back(nodes[min_id]);
+                res.emplace_back(nodes[min_id]);
             }
         }
-        res.push_back(route.back());
+        res.emplace_back(route.back());
         route = res;
     }
     return route;
@@ -471,12 +467,13 @@ pair<vector<Node>, vector<Node>> Utils::optimizeStations(const vector<Node>& rou
         }
     }
     vector<Node> stations;
+    stations.reserve(input.m);
     for(int i = 0; i < input.m; i++) {
         if(num[i] > 0) {
             w_x[i] /= num[i];
             w_y[i] /= num[i];
         }
-        stations.push_back(Node(w_x[i], w_y[i], i, 0));
+        stations.emplace_back(Node(w_x[i], w_y[i], i, 0));
     }
     vector<Node> ret_route = route;
     for(int i = 0; i < ret_route.size(); i++) {
@@ -500,14 +497,16 @@ int main(int argc, char* argv[]) {
         }
         IterationControl<State> sera;
         //State ans = sera.anneal(0.01, 1e5, 1, State::initState());
-        State ans = sera.climb(0.0005, State::initState());
+        //State ans = sera.climb(0.0005, State::initState());
+        State ans = sera.climb(2, State::initState());
         ans.output.stations = Utils::initStations();
         ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 2);
         auto [_route, _stations] = Utils::optimizeStations(ans.output.route);
         ans.output.route = move(_route);
         ans.output.stations = move(_stations);
         //ans = sera.anneal(0.01, 1e5, 1, ans);
-        ans = sera.climb(0.0005, ans);
+        //ans = sera.climb(0.0005, ans);
+        ans = sera.climb(2, ans);
         ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 2);
         auto [route, stations] = Utils::optimizeStations(ans.output.route);
         ans.output.route = move(route);
