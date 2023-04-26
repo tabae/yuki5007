@@ -88,6 +88,7 @@ struct State {
     static State initState(const vector<Node>&);
     static State generateState(const State& input_state);
     void changeState(double, int&, int, int);
+    void changeStateClimb(int&, int, int);
 };
 
 /*イテレーション管理クラス*/
@@ -104,18 +105,25 @@ struct IterationControl {
         average_time = 0;
         STATE best_state = initial_state;
         double time_stamp = start_time;
+        #ifdef DEBUG
         cerr << "[INFO] - IterationControl::climb - Starts climbing...\n";
+        #endif
+        const int rsize = best_state.output.route.size();
         while(time_stamp - start_time + average_time < time_limit) {
             STATE current_state = STATE::generateState(best_state);
-            if(current_state.score > best_state.score) {
-                swap(best_state, current_state);
-                swap_counter++;
+            for(int i = 0; i < rsize-1; i++) {
+                for(int j = 0; j < rsize-1; j++) {
+                    iteration_counter++;
+                    best_state.changeStateClimb(swap_counter, i, j);
+                }
             }
             iteration_counter++;
             time_stamp = toki.gettime();
             average_time = (time_stamp - start_time) / iteration_counter;
         }
+        #ifdef DEBUG
         cerr << "[INFO] - IterationControl::climb - Iterated " << iteration_counter << " times and swapped " << swap_counter << " times.\n";
+        #endif
         return best_state;
     }
     /*焼きなまし法*/
@@ -125,7 +133,9 @@ struct IterationControl {
         average_time = 0;
         STATE best_state = initial_state;
         double elapsed_time = 0;
+        #ifdef DEBUG
         cerr << "[INFO] - IterationControl::anneal - Starts annealing...\n";
+        #endif
         const int rsize = best_state.output.route.size();
         while(elapsed_time + average_time < time_limit) {
             double normalized_time = elapsed_time / time_limit;
@@ -139,7 +149,9 @@ struct IterationControl {
             elapsed_time = toki.gettime() - start_time;
             average_time = elapsed_time / iteration_counter;
         }
+        #ifdef DEBUG
         cerr << "[INFO] - IterationControl::anneal - Iterated " << iteration_counter << " times and swapped " << swap_counter << " times.\n";
+        #endif
         return best_state;
     }
 };
@@ -235,6 +247,29 @@ void State::changeState(double temp_current, int &swap_counter, int i, int j) {
         score = Utils::calcScoreFromLength(length);        
     }
 }
+
+void State::changeStateClimb(int &swap_counter, int i, int j) {
+    if(i > j) swap(i, j);
+    int i2 = i+1;
+    int j2 = j+1;
+    bool chk = (i != j) && (i != j2) && (j != i2); 
+    if(!chk) return;
+    long long org_score = score;
+    long long new_len = length;
+    new_len -= Utils::calcWeightedSquareDist(output.route[i], output.route[i2]);
+    new_len -= Utils::calcWeightedSquareDist(output.route[j], output.route[j2]);
+    new_len += Utils::calcWeightedSquareDist(output.route[i], output.route[j]);
+    new_len += Utils::calcWeightedSquareDist(output.route[j2],output.route[i2]);
+    long long new_score = Utils::calcScoreFromLength(new_len);
+    long long delta = new_score - org_score;
+    if(delta > 0) {
+        swap_counter++;
+        reverse(output.route.begin() + i2, output.route.begin() + j2);
+        length = new_len;
+        score = Utils::calcScoreFromLength(length);        
+    }
+}
+
 
 /*TODO: ここでinput_stateを変化させた解を作る（局所探索）*/
 State State::generateState(const State& input_state) {
@@ -367,12 +402,14 @@ vector<Node> Utils::initStations() {
         count++;
     }
     if(count >= iter_max) {
+        #ifdef DEBUG
         cerr << "[WARNING] - Utils::initStations - Failed to k-means" << endl;
         /*
         for(int i = 0; i < input.n; i++) {
             cerr << cluster[i] << " " << input.planets[i].x << " " << input.planets[i].y << endl;
         }
         */
+       #endif
     }
     vector<Node> res(input.m);
     vector<long long> w_x(input.m, 0);
@@ -470,11 +507,18 @@ int main(int argc, char* argv[]) {
 
     long long best_score = 0;
     State best;
-    for(int t = 0; t < 80; t++) {
+    for(int t = 0; t < 150; t++) {
         IterationControl<State> sera;
-        State ans = sera.anneal(0.01, 1e5, 1, State::initState());
-        ans.output.stations = Utils::initStations();
-        ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 10);
+        //State ans = sera.anneal(0.01, 1e5, 1, State::initState());
+        State ans = sera.climb(0.0025, State::initState());
+        auto initial_stations = Utils::initStations();
+        ans.output.route = Utils::goThroughStations(ans.output.route, initial_stations, 10);
+        auto [_route, _stations] = Utils::optimizeStations(ans.output.route);
+        ans.output.route = _route;
+        ans.output.stations = _stations;
+        //ans = sera.anneal(0.01, 1e5, 1, ans);
+        ans = sera.climb(0.0025, ans);
+        ans.output.route = Utils::goThroughStations(ans.output.route, initial_stations, 10);
         auto [route, stations] = Utils::optimizeStations(ans.output.route);
         ans.output.route = route;
         ans.output.stations = stations;
