@@ -521,7 +521,7 @@ int main(int argc, char* argv[]) {
         ans.output.stations = _stations;
         //ans = sera.anneal(0.01, 1e5, 1, ans);
         ans = sera.climb(0.001, ans);
-        ans.output.route = Utils::goThroughStations(ans.output.route, initial_stations, 10);
+        ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 10);
         auto [route, stations] = Utils::optimizeStations(ans.output.route);
         ans.output.route = route;
         ans.output.stations = stations;
