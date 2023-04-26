@@ -145,16 +145,19 @@ struct IterationControl {
 };
 
 namespace Utils {
+    vector<vector<int>> warshallFloydTable;
+    void initWarshallFloydTable(const vector<Node>& stations);
     int calcSquareDist(const Node& a, const Node& b);
     int calcWeightedSquareDist(const Node& a, const Node& b);
+    int calcWeightedSquareDistWF(const Node& a, const Node& b);
     bool isPlanet(const Node& node);
     bool isStart(const Node& node);
     pair<long long, long long> calcScore(const Output& output);
     long long calcScoreFromLength(long long length);
     vector<Node> initStations();
     vector<Node> solveInsertedTSP(const vector<Node>& stations);
-    pair<vector<Node>, vector<Node>> goThroughStations(vector<Node>, int);
-    vector<Node> optimizeStations(const vector<Node>&);
+    pair<vector<Node>, vector<Node>> goThroughStations(vector<Node>, const vector<Node>& stations, int);
+    pair<vector<Node>, vector<Node>> optimizeStations(const vector<Node>&);
 };
 
 /* ============================================== 
@@ -207,7 +210,10 @@ State State::initState() {
 
 State State::initState(const vector<Node>& stations) {
     State res;
-    res.output.route = Utils::solveInsertedTSP(stations);
+    Utils::initWarshallFloydTable(stations);
+    res.output.route = Utils::solveInsertedTSP(vector<Node>());
+    auto [route, _] = Utils::goThroughStations(res.output.route, stations, 10);
+    res.output.route = route;
     auto [score, length] = Utils::calcScore(res.output);
     res.score = score;
     res.length = length;
@@ -274,12 +280,40 @@ int Utils::calcWeightedSquareDist(const Node& a, const Node& b) {
     return res;
 }
 
+int Utils::calcWeightedSquareDistWF(const Node& a, const Node& b) {
+    int a_id = (Utils::isPlanet(a) ? a.id : a.id + input.n);
+    int b_id = (Utils::isPlanet(b) ? b.id : b.id + input.n);
+    return Utils::warshallFloydTable[a_id][b_id];
+}
+
 bool Utils::isStart(const Node& node) {
     return isPlanet(node) && node.id == 0;
 }
 
 bool Utils::isPlanet(const Node& node) {
     return node.type == Node::Type::planet;
+}
+
+void Utils::initWarshallFloydTable(const vector<Node>& stations) {
+    const int table_size = input.n + input.m;
+    vector<Node> nodes;
+    for(auto e: input.planets) nodes.push_back(e);
+    for(auto e: stations) nodes.push_back(e);
+    warshallFloydTable.resize(table_size, vector<int>(table_size, 1<<30));
+    for(int i = 0; i < table_size; i++) warshallFloydTable[i][i] = 0;
+    for(int i = 0; i < table_size; i++) {
+        for(int j = i+1; j < table_size; j++) {
+            warshallFloydTable[i][j] = Utils::calcWeightedSquareDist(nodes[i], nodes[j]);
+            warshallFloydTable[j][i] = Utils::calcWeightedSquareDist(nodes[i], nodes[j]);
+        }
+    }
+    for(int k = 0; k < table_size; k++) {
+        for(int i = 0; i < table_size; i++) {
+            for(int j = 0; j < table_size; j++) {
+                warshallFloydTable[i][j] = min(warshallFloydTable[i][j], warshallFloydTable[i][k] + warshallFloydTable[k][j]);
+            }
+        }
+    }
 }
 
 /*TODO: ここでスコアを計算する*/
@@ -289,14 +323,8 @@ pair<long long, long long> Utils::calcScore(const Output& output) {
     for(int i = 0; i < route.size() - 1; i++) {
         const Node& cur = route[i];
         const Node& nxt = route[i+1];
-        const long long d2 = Utils::calcSquareDist(cur, nxt);
-        if(isPlanet(cur) && isPlanet(nxt)) {
-            sum += input.a * input.a * d2; 
-        } else if(!isPlanet(cur) && !isPlanet(nxt)) {
-            sum += d2;
-        } else {
-            sum += input.a * d2;
-        }
+        const long long d2 = Utils::calcWeightedSquareDist(cur, nxt);
+        sum += d2;
     }
     long long res = (long long)(1e9 / (1e3 + sqrt(sum)));
     return {res, sum};
@@ -308,6 +336,7 @@ long long Utils::calcScoreFromLength(long long length) {
 }
 
 vector<Node> Utils::solveInsertedTSP(const vector<Node>& stations) {
+    assert(Utils::warshallFloydTable.size() > 0);
     vector<Node> nodes, route;
     for(auto e: input.planets) if(e.id != 0) nodes.push_back(e);
     for(auto e: stations) nodes.push_back(e);
@@ -317,7 +346,7 @@ vector<Node> Utils::solveInsertedTSP(const vector<Node>& stations) {
     for(auto e: nodes) {
         int min_dist = 1<<30, min_id = -1;
         for(int i = 0; i < route.size() - 1; i++) {
-            int dist = Utils::calcSquareDist(e, route[i]) + Utils::calcSquareDist(e, route[i+1]);
+            int dist = Utils::calcWeightedSquareDist(e, route[i]) + Utils::calcWeightedSquareDist(e, route[i+1]);
             if(min_dist > dist) {
                 min_dist = dist;
                 min_id = i + 1;
@@ -399,8 +428,7 @@ vector<Node> Utils::initStations() {
     return res;
 }
 
-pair<vector<Node>, vector<Node>> Utils::goThroughStations(vector<Node> route, int iter_max) {
-    vector<Node> stations = Utils::initStations();
+pair<vector<Node>, vector<Node>> Utils::goThroughStations(vector<Node> route, const vector<Node>& stations, int iter_max) {
     vector<Node> nodes = input.planets;
     for(auto e: stations) nodes.push_back(e);
     for(int it = 0; it < iter_max; it++) {
@@ -429,7 +457,7 @@ pair<vector<Node>, vector<Node>> Utils::goThroughStations(vector<Node> route, in
     return {route, stations};
 }
 
-vector<Node> Utils::optimizeStations(const vector<Node>& route) {
+pair<vector<Node>, vector<Node>> Utils::optimizeStations(const vector<Node>& route) {
     vector<int> w_x(input.m, 0);
     vector<int> w_y(input.m, 0);
     vector<int> num(input.m, 0);
@@ -455,7 +483,14 @@ vector<Node> Utils::optimizeStations(const vector<Node>& route) {
         }
         stations.push_back(Node(w_x[i], w_y[i], i, Node::Type::station));
     }
-    return stations;
+    vector<Node> ret_route = route;
+    for(int i = 0; i < ret_route.size(); i++) {
+        if(!Utils::isPlanet(ret_route[i])) {
+            ret_route[i].x = stations[ret_route[i].id].x;
+            ret_route[i].y = stations[ret_route[i].id].y;
+        }
+    }
+    return {ret_route, stations};
 } 
 
 int main(int argc, char* argv[]) {
@@ -466,12 +501,12 @@ int main(int argc, char* argv[]) {
     State best;
     for(int t = 0; t < 80; t++) {
         IterationControl<State> sera;
-        State ans = sera.anneal(0.01, 1e5, 1, State::initState());
-        //State ans = sera.climb(0.8, State::initState());
-        //State ans = State::initState();
-        auto [route, stations] = Utils::goThroughStations(ans.output.route, 10);
+        auto initialStations = Utils::initStations();
+        State ans = sera.anneal(0.01, 1e5, 50, State::initState(initialStations));
+        auto [_route, _] = Utils::goThroughStations(ans.output.route, initialStations, 10);
+        auto [route, stations] = Utils::optimizeStations(_route);
         ans.output.route = route;
-        ans.output.stations = Utils::optimizeStations(ans.output.route);
+        ans.output.stations = stations;
         ans.score = Utils::calcScore(ans.output).first;
         if(ans.score > best_score) {
             best_score = ans.score;
