@@ -154,6 +154,7 @@ namespace Utils {
     vector<Node> initStations();
     vector<Node> solveInsertedTSP(const vector<Node>& stations);
     pair<vector<Node>, vector<Node>> goThroughStations(vector<Node>, int);
+    vector<Node> optimizeStations(const vector<Node>&);
 };
 
 /* ============================================== 
@@ -312,6 +313,7 @@ vector<Node> Utils::solveInsertedTSP(const vector<Node>& stations) {
     for(auto e: stations) nodes.push_back(e);
     route.push_back(input.planets.front());
     route.push_back(input.planets.front());
+    shuffle(nodes.begin(), nodes.end(), ryuka.engine);
     for(auto e: nodes) {
         int min_dist = 1<<30, min_id = -1;
         for(int i = 0; i < route.size() - 1; i++) {
@@ -334,7 +336,7 @@ vector<Node> Utils::initStations() {
     }
     vector<int> prev;
     int count = 0;
-    const int iter_max = 1000;
+    const int iter_max = 100;
     while(prev != cluster && count < iter_max) {
         vector<long long> w_x(input.m, 0);
         vector<long long> w_y(input.m, 0);
@@ -427,17 +429,55 @@ pair<vector<Node>, vector<Node>> Utils::goThroughStations(vector<Node> route, in
     return {route, stations};
 }
 
+vector<Node> Utils::optimizeStations(const vector<Node>& route) {
+    vector<int> w_x(input.m, 0);
+    vector<int> w_y(input.m, 0);
+    vector<int> num(input.m, 0);
+    for(int i = 0; i < route.size(); i++) {
+        if(Utils::isPlanet(route[i])) {
+            if(i - 1 >= 0 && !Utils::isPlanet(route[i-1])) {
+                w_x[route[i-1].id] += route[i].x;
+                w_y[route[i-1].id] += route[i].y;
+                num[route[i-1].id]++;
+            } 
+            if(i + 1 < route.size() && !Utils::isPlanet(route[i+1])){
+                w_x[route[i+1].id] += route[i].x;
+                w_y[route[i+1].id] += route[i].y;
+                num[route[i+1].id]++;
+            }
+        }
+    }
+    vector<Node> stations;
+    for(int i = 0; i < input.m; i++) {
+        if(num[i] > 0) {
+            w_x[i] /= num[i];
+            w_y[i] /= num[i];
+        }
+        stations.push_back(Node(w_x[i], w_y[i], i, Node::Type::station));
+    }
+    return stations;
+} 
+
 int main(int argc, char* argv[]) {
     toki.init();
     input.read();   
-    IterationControl<State> sera;
-    State ans = sera.anneal(0.4, 1e5, 10, State::initState());
-    //State ans = sera.climb(0.8, State::initState());
-    //State ans = State::initState();
-    auto [route, stations] = Utils::goThroughStations(ans.output.route, 1000);
-    ans.output.route = route;
-    ans.output.stations = stations;
-    ans.score = Utils::calcScore(ans.output).first;
-    ans.output.print();
-    cerr << "[INFO] - main - MyScore = " << ans.score << "\n";
+
+    long long best_score = 0;
+    State best;
+    for(int t = 0; t < 40; t++) {
+        IterationControl<State> sera;
+        State ans = sera.anneal(0.02, 1e5, 1, State::initState());
+        //State ans = sera.climb(0.8, State::initState());
+        //State ans = State::initState();
+        auto [route, stations] = Utils::goThroughStations(ans.output.route, 10);
+        ans.output.route = route;
+        ans.output.stations = Utils::optimizeStations(ans.output.route);
+        ans.score = Utils::calcScore(ans.output).first;
+        if(ans.score > best_score) {
+            best_score = ans.score;
+            best = ans;
+        }
+    }
+    best.output.print();
+    cerr << "[INFO] - main - MyScore = " << best.score << "\n";
 }
