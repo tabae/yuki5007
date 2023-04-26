@@ -332,7 +332,7 @@ vector<Node> Utils::solveInsertedTSP(const vector<Node>& stations) {
 vector<Node> Utils::initStations() {
     vector<int> cluster(input.n, 0);
     for(int i = 0; i < input.n; i++) {
-        cluster[i] = i % input.m;
+        cluster[i] = ryuka.rand(input.m);
     }
     vector<int> prev;
     int count = 0;
@@ -464,9 +464,9 @@ int main(int argc, char* argv[]) {
 
     long long best_score = 0;
     State best;
-    for(int t = 0; t < 40; t++) {
+    for(int t = 0; t < 80; t++) {
         IterationControl<State> sera;
-        State ans = sera.anneal(0.02, 1e5, 1, State::initState());
+        State ans = sera.anneal(0.01, 1e5, 1, State::initState());
         //State ans = sera.climb(0.8, State::initState());
         //State ans = State::initState();
         auto [route, stations] = Utils::goThroughStations(ans.output.route, 10);
