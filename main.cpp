@@ -52,10 +52,14 @@ struct Timer {
 } toki;
 
 struct Node {
+    enum Type {
+        planet,
+        station
+    };
     int x, y, id;
-    int is_planet;
+    Type type;
     Node() {};
-    Node(int, int, int, int);
+    Node(int, int, int, Type);
 };
 
 struct Input {
@@ -155,6 +159,7 @@ struct IterationControl {
 namespace Utils {
     int calcSquareDist(const Node& a, const Node& b);
     int calcWeightedSquareDist(const Node& a, const Node& b);
+    bool isPlanet(const Node& node);
     bool isStart(const Node& node);
     pair<long long, long long> calcScore(const Output& output);
     long long calcScoreFromLength(long long length);
@@ -170,8 +175,8 @@ namespace Utils {
 
 #pragma endregion prototype_declaration
 
-Node::Node(int x, int y, int id, int is_planet) : 
-    x(x), y(y), id(id), is_planet(is_planet) {
+Node::Node(int x, int y, int id, Node::Type type) : 
+    x(x), y(y), id(id), type(type) {
         ;
 }
 
@@ -182,7 +187,7 @@ void Input::read() {
     for(int i = 0; i < n; i++) {
         cin >> planets[i].x >> planets[i].y;
         planets[i].id = i;
-        planets[i].is_planet = true;
+        planets[i].type = Node::Type::planet;
     }
 }
 
@@ -198,7 +203,7 @@ void Output::print() {
     }
     cout << route.size() << endl;
     for(auto e : route) {
-        cout << (e.is_planet ? 1 : 2) << " " << e.id + 1 << endl;
+        cout << (Utils::isPlanet(e) ? 1 : 2) << " " << e.id + 1 << endl;
     }
 }
 
@@ -297,14 +302,19 @@ int Utils::calcWeightedSquareDist(const Node& a, const Node& b) {
     const int dx = a.x - b.x;
     const int dy = a.y - b.y;
     const int s = dx * dx + dy * dy;
-    const int p = a.is_planet & b.is_planet;
-    const int q = a.is_planet ^ b.is_planet; 
-    const int res = (p * 25 + q * 5) * s;
+    int res;
+    if(Utils::isPlanet(a) && Utils::isPlanet(b)) res = s * input.a * input.a;
+    else if(!Utils::isPlanet(a) && !Utils::isPlanet(b)) res = s;
+    else res = s * input.a; 
     return res;
 }
 
 bool Utils::isStart(const Node& node) {
-    return node.is_planet && node.id == 0;
+    return isPlanet(node) && node.id == 0;
+}
+
+bool Utils::isPlanet(const Node& node) {
+    return node.type == Node::Type::planet;
 }
 
 /*TODO: ここでスコアを計算する*/
@@ -315,9 +325,9 @@ pair<long long, long long> Utils::calcScore(const Output& output) {
         const Node& cur = route[i];
         const Node& nxt = route[i+1];
         const long long d2 = Utils::calcSquareDist(cur, nxt);
-        if(cur.is_planet && nxt.is_planet) {
+        if(isPlanet(cur) && isPlanet(nxt)) {
             sum += input.a * input.a * d2; 
-        } else if(!cur.is_planet && !nxt.is_planet) {
+        } else if(!isPlanet(cur) && !isPlanet(nxt)) {
             sum += d2;
         } else {
             sum += input.a * d2;
@@ -328,7 +338,7 @@ pair<long long, long long> Utils::calcScore(const Output& output) {
 }
 
 long long Utils::calcScoreFromLength(long long length) {
-    long long res = (long long)(1000000000 / (1000 + sqrt((float)length)));
+    long long res = (long long)(1e9 / (1e3 + sqrt(length)));
     return res;
 }
 
@@ -380,7 +390,7 @@ vector<Node> Utils::initStations() {
         for(int i = 0; i < input.n; i++) {
             int min_dist = 1<<30, min_id = -1;
             for(int j = 0; j < input.m; j++) {
-                int dist = Utils::calcSquareDist(input.planets[i], Node(w_x[j], w_y[j], -1, false));
+                int dist = Utils::calcSquareDist(input.planets[i], Node(w_x[j], w_y[j], -1, Node::Type::station));
                 if(dist < min_dist) {
                     min_dist = dist;
                     min_id = j;
@@ -421,7 +431,7 @@ vector<Node> Utils::initStations() {
         }
     }
     for(int i = 0; i < input.m; i++) {
-        res[i] = Node(w_x[i], w_y[i], i, false);
+        res[i] = Node(w_x[i], w_y[i], i, Node::Type::station);
     }   
     return res;
 }
@@ -460,13 +470,13 @@ pair<vector<Node>, vector<Node>> Utils::optimizeStations(const vector<Node>& rou
     vector<int> w_y(input.m, 0);
     vector<int> num(input.m, 0);
     for(int i = 0; i < route.size(); i++) {
-        if(route[i].is_planet) {
-            if(i - 1 >= 0 && !route[i-1].is_planet) {
+        if(Utils::isPlanet(route[i])) {
+            if(i - 1 >= 0 && !Utils::isPlanet(route[i-1])) {
                 w_x[route[i-1].id] += route[i].x;
                 w_y[route[i-1].id] += route[i].y;
                 num[route[i-1].id]++;
             } 
-            if(i + 1 < route.size() && !route[i+1].is_planet){
+            if(i + 1 < route.size() && !Utils::isPlanet(route[i+1])){
                 w_x[route[i+1].id] += route[i].x;
                 w_y[route[i+1].id] += route[i].y;
                 num[route[i+1].id]++;
@@ -479,11 +489,11 @@ pair<vector<Node>, vector<Node>> Utils::optimizeStations(const vector<Node>& rou
             w_x[i] /= num[i];
             w_y[i] /= num[i];
         }
-        stations.push_back(Node(w_x[i], w_y[i], i, false));
+        stations.push_back(Node(w_x[i], w_y[i], i, Node::Type::station));
     }
     vector<Node> ret_route = route;
     for(int i = 0; i < ret_route.size(); i++) {
-        if(!ret_route[i].is_planet) {
+        if(!Utils::isPlanet(ret_route[i])) {
             ret_route[i].x = stations[ret_route[i].id].x;
             ret_route[i].y = stations[ret_route[i].id].y;
         }
@@ -497,7 +507,7 @@ int main(int argc, char* argv[]) {
 
     long long best_score = 0;
     State best;
-    for(int t = 0; t < 10000000; t++) {
+    for(int t = 0; t < 1000; t++) {
         if(t % 10 == 0) {
             if(toki.elapsed() > 0.9) break;
         }
@@ -511,7 +521,7 @@ int main(int argc, char* argv[]) {
         ans.output.stations = _stations;
         //ans = sera.anneal(0.01, 1e5, 1, ans);
         ans = sera.climb(0.001, ans);
-        ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 10);
+        ans.output.route = Utils::goThroughStations(ans.output.route, initial_stations, 10);
         auto [route, stations] = Utils::optimizeStations(ans.output.route);
         ans.output.route = route;
         ans.output.stations = stations;
