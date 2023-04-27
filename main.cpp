@@ -86,6 +86,11 @@ struct State {
 };
 
 namespace Utils {
+    vector<vector<int>> warshallFloydTable;
+    vector<vector<vector<int>>> shortestPathPlanets;
+    void initWarshallFloydTable();
+    void initShortestPathPlanets();
+    vector<int> getShortestPathPlanet(int, int);
     vector<vector<int>> planetsDist;
     void initPlanetsDist();
     int calcSquareDistOnlyPlanets(const Node& a, const Node& b);
@@ -297,6 +302,48 @@ bool Utils::isPlanet(const Node& node) {
     return node.is_planet;
 }
 
+vector<int> Utils::getShortestPathPlanet(int a, int b) {
+    return Utils::shortestPathPlanets[a][b];
+}
+
+void Utils::initShortestPathPlanets() {
+    Utils::shortestPathPlanets.resize(input.n, vector<vector<int>>(input.n));
+    for(int a = 0; a < input.n; a++) {
+        for(int b = a; b < input.n; b++) {
+            priority_queue<pair<int,int>, vector<pair<int,int>>, greater<pair<int,int>>> que;
+            vector<int> dist(input.n, 1<<30);
+            vector<int> from(input.n, -1);
+            que.push({0, a});
+            dist[a] = 0;
+            while(!que.empty()) {
+                auto [cost, pos] = que.top();
+                que.pop();
+                if(dist[pos] != cost) continue;
+                if(pos == b) break;
+                for(int to = 0; to < input.n; to++) {
+                    int ncost = cost + Utils::planetsDist[pos][to]; 
+                    if(dist[to] > ncost) {
+                        dist[to] = ncost;
+                        from[to] = pos;
+                        que.push({ncost, to});
+                    }
+                }
+            }
+            vector<int> path;
+            int pos = b;
+            path.push_back(pos);
+            while(pos != a) {
+                pos = from[pos];
+                path.push_back(pos);
+            } 
+            assert(pos == a);
+            Utils::shortestPathPlanets[b][a] = path;
+            reverse(path.begin(), path.end());
+            Utils::shortestPathPlanets[a][b] = path;
+        }
+    }
+}
+
 /*TODO: ここでスコアを計算する*/
 pair<long long, long long> Utils::calcScore(const Output& output) {
     long long sum = 0;
@@ -333,17 +380,38 @@ void Utils::initPlanetsDist() {
     }
 }
 
+void Utils::initWarshallFloydTable() {
+    const int table_size = input.n;
+    warshallFloydTable.resize(table_size, vector<int>(table_size, 1<<30));
+    for(int i = 0; i < table_size; i++) warshallFloydTable[i][i] = 0;
+    for(int i = 0; i < table_size; i++) {
+        for(int j = i+1; j < table_size; j++) {
+            warshallFloydTable[i][j] = planetsDist[i][j];
+            warshallFloydTable[j][i] = planetsDist[i][j];
+        }
+    }
+    for(int k = 0; k < table_size; k++) {
+        for(int i = 0; i < table_size; i++) {
+            for(int j = 0; j < table_size; j++) {
+                warshallFloydTable[i][j] = min(warshallFloydTable[i][j], warshallFloydTable[i][k] + warshallFloydTable[k][j]);
+            }
+        }
+    }
+}
+
 vector<Node> Utils::solveInsertedTSP() {
-    vector<Node> route;
-    route.reserve(input.n);
-    vector<Node> nodes = input.planets;
-    route.emplace_back(input.planets.front());
-    route.emplace_back(input.planets.front());
+    vector<int> nodes(input.n-1);
+    for(int i = 0; i < input.n - 1; i++) nodes[i] = i + 1;
     shuffle(nodes.begin(), nodes.end(), ryuka.engine);
+    vector<int> route;
+    route.reserve(input.n+1);
+    route.emplace_back(0);
+    route.emplace_back(0);
     for(auto e: nodes) {
         int min_dist = 1<<30, min_id = -1;
         for(int i = 0; i < route.size() - 1; i++) {
-            int dist = Utils::calcSquareDistOnlyPlanets(e, route[i]) + Utils::calcSquareDistOnlyPlanets(e, route[i+1]);
+            int dist = Utils::warshallFloydTable[e][route[i]] 
+                    + Utils::warshallFloydTable[e][route[i+1]];
             if(min_dist > dist) {
                 min_dist = dist;
                 min_id = i + 1;
@@ -352,7 +420,21 @@ vector<Node> Utils::solveInsertedTSP() {
         assert(min_id != -1);
         route.insert(route.begin() + min_id, e);
     }
-    return route;
+    vector<Node> res;
+    vector<bool> seen(input.n, false);
+    int prev = route[0];
+    for(int i = 0; i < route.size() - 1; i++) {
+        if(i+1 == route.size()-1 || !seen[route[i+1]]) {
+            for(const auto& e : shortestPathPlanets[prev][route[i+1]]) {
+                if(res.size() == 0 || res.back().id != e) {
+                    res.emplace_back(input.planets[e]);
+                    seen[e] = true;
+                } 
+            } 
+            prev = route[i];
+        }
+    }
+    return res;
 }
 
 vector<Node> Utils::initStations() {
@@ -489,7 +571,15 @@ int main(int argc, char* argv[]) {
     toki.init();
     input.read();   
     Utils::initPlanetsDist();
+    Utils::initWarshallFloydTable();
+    Utils::initShortestPathPlanets();
     long long best_score = 0;
+    int climb1 = 6;
+    int climb2 = 3;
+    #ifdef OPTUNA
+    climb1 = atoi(argv[1]);
+    climb2 = atoi(argv[2]);
+    #endif
     State best;
     for(int t = 0; t < 10000000; t++) {
         if(t % 10 == 0) {
@@ -498,7 +588,7 @@ int main(int argc, char* argv[]) {
         IterationControl<State> sera;
         //State ans = sera.anneal(0.01, 1e5, 1, State::initState());
         //State ans = sera.climb(0.0005, State::initState());
-        State ans = sera.climb(2, State::initState());
+        State ans = sera.climb(climb1, State::initState());
         ans.output.stations = Utils::initStations();
         ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 2);
         auto [_route, _stations] = Utils::optimizeStations(ans.output.route);
@@ -506,7 +596,7 @@ int main(int argc, char* argv[]) {
         ans.output.stations = move(_stations);
         //ans = sera.anneal(0.01, 1e5, 1, ans);
         //ans = sera.climb(0.0005, ans);
-        ans = sera.climb(2, ans);
+        ans = sera.climb(climb2, ans);
         ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 2);
         auto [route, stations] = Utils::optimizeStations(ans.output.route);
         ans.output.route = move(route);
