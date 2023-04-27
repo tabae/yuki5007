@@ -549,18 +549,28 @@ int main(int argc, char* argv[]) {
         }
         //ans = sera.anneal(0.01, 1e5, 1, ans);
         //ans = sera.climb(0.0005, ans);
-        ans = sera.climb(3, ans);
-        ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 2);
-        auto [route, stations] = Utils::optimizeStations(ans.output.route);
-        ans.output.route = move(route);
-        ans.output.stations = move(stations);
-        ans.score = Utils::calcScore(ans.output).first;
-        if(ans.score > best_score) {
-            best_score = ans.score;
-            best = move(ans);
+        auto f = [&](State& ans) -> bool {
+            ans = sera.climb(3, ans);
+            ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 2);
+            auto [route, stations] = Utils::optimizeStations(ans.output.route);
+            ans.output.route = move(route);
+            ans.output.stations = move(stations);
+            ans.score = Utils::calcScore(ans.output).first;
+            if(ans.score > best_score) {
+                best_score = ans.score;
+                best = ans;
+                return true;
+            }
+            return false;
+        };
+        bool ret = f(ans);
+        if(ret && Loop >= 500) {
+            for(int chal = 0; chal < 10; chal++) {
+                f(best);
+            }
         }
     }
-    while(toki.elapsed() < 0.9) {
+    while(toki.elapsed() < 0.95) {
         State ans = sera.climb(3, best);
         ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 2);
         auto [route, stations] = Utils::optimizeStations(ans.output.route);
