@@ -529,11 +529,11 @@ int main(int argc, char* argv[]) {
     Utils::initPlanetsDist();
     long long best_score = 0, best_pre_score = 0;
     State best, best_pre;
+    IterationControl<State> sera;
     for(Loop = 0; Loop < 10000000; Loop++) {
         if(Loop % 10 == 0) {
-            if(toki.elapsed() > 0.9) break;
+            if(toki.elapsed() > 0.8) break;
         }
-        IterationControl<State> sera;
         //State ans = sera.anneal(0.01, 1e5, 1, State::initState());
         //State ans = sera.climb(0.0005, State::initState());
         //State ans = State::initState();
@@ -558,6 +558,18 @@ int main(int argc, char* argv[]) {
         if(ans.score > best_score) {
             best_score = ans.score;
             best = move(ans);
+        }
+    }
+    while(toki.elapsed() < 0.9) {
+        State ans = sera.climb(3, best);
+        ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 2);
+        auto [route, stations] = Utils::optimizeStations(ans.output.route);
+        ans.output.route = move(route);
+        ans.output.stations = move(stations);
+        ans.score = Utils::calcScore(ans.output).first;
+        if(ans.score > best_score) {
+            best_score = ans.score;
+            best = ans;
         }
     }
     best.output.print();
