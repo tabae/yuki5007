@@ -3,6 +3,7 @@
 #include <atcoder/all>
 
 using namespace std;
+int Loop;
 
 #pragma region prototype_declaration
 /* ============================================== 
@@ -97,6 +98,7 @@ namespace Utils {
     long long calcScoreFromLength(long long length);
     vector<Node> initStations();
     vector<Node> solveInsertedTSP();
+    vector<Node> solveNNTSP();
     vector<Node> goThroughStations(vector<Node>, const vector<Node>& stations, int);
     pair<vector<Node>, vector<Node>> optimizeStations(const vector<Node>&);
 };
@@ -199,6 +201,7 @@ void Output::print() {
 State State::initState() {
     State res;
     res.output.route = Utils::solveInsertedTSP();
+//    res.output.route = Utils::solveNNTSP();
     auto [score, length] = Utils::calcScore(res.output);
     res.score = score;
     res.length = length;
@@ -333,10 +336,39 @@ void Utils::initPlanetsDist() {
     }
 }
 
+vector<Node> Utils::solveNNTSP() {
+    vector<Node> route;
+    route.reserve(input.n+1);
+    vector<Node> nodes(input.n);
+    for(int i = 0; i < input.n; i++) nodes[i] = input.planets[i]; 
+    vector<bool> seen(input.n, false);
+    route.emplace_back(input.planets.front());  
+    seen[0] = true;
+    int prev = 0;
+    for(int it = 0; it < input.n-1; it++) {
+        int min_dist = 1<<30, min_id = -1;
+        for(int i = 0; i < input.n; i++) {
+            if(!seen[i]) {
+                int dist = Utils::calcSquareDistOnlyPlanets(nodes[prev], nodes[i]);
+                if(min_dist > dist) {
+                    min_dist = dist;
+                    min_id = i;
+                }
+            }
+        }
+        seen[min_id] = true;
+        prev = min_id;
+        route.emplace_back(input.planets[min_id]);
+    }
+    route.emplace_back(input.planets.front());
+    return route;
+}
+
 vector<Node> Utils::solveInsertedTSP() {
     vector<Node> route;
-    route.reserve(input.n);
-    vector<Node> nodes = input.planets;
+    route.reserve(input.n+1);
+    vector<Node> nodes(input.n-1);
+    for(int i = 0; i < input.n-1; i++) nodes[i] = input.planets[i+1]; 
     route.emplace_back(input.planets.front());
     route.emplace_back(input.planets.front());
     shuffle(nodes.begin(), nodes.end(), ryuka.engine);
@@ -401,16 +433,20 @@ vector<Node> Utils::initStations() {
         w_y[cluster[i]] += input.planets[i].y;
         num[cluster[i]]++;
     }
+    int zid = 0;
     for(int i = 0; i < input.m; i++) {
         if(num[i] > 0) {
             w_x[i] /= num[i];
             w_y[i] /= num[i];
-            w_x[i] = clamp(w_x[i] + ryuka.rand(100) - 50, 1LL, 999LL);
-            w_y[i] = clamp(w_y[i] + ryuka.rand(100) - 50, 1LL, 999LL);
         } else {
+            w_x[i] = input.planets[zid].x;
+            w_y[i] = input.planets[zid].y;
+            zid++;
+            /*
             int z = ryuka.rand(input.n);
             w_x[i] = clamp(input.planets[z].x + ryuka.rand(100) - 50, 1, 999);
             w_y[i] = clamp(input.planets[z].y + ryuka.rand(100) - 50, 1, 999);
+            */
         }
     }
     for(int i = 0; i < input.m; i++) {
@@ -491,22 +527,26 @@ int main(int argc, char* argv[]) {
     toki.init();
     input.read();   
     Utils::initPlanetsDist();
-    long long best_score = 0;
-    State best;
-    for(int t = 0; t < 10000000; t++) {
-        if(t % 10 == 0) {
+    long long best_score = 0, best_pre_score = 0;
+    State best, best_pre;
+    for(Loop = 0; Loop < 10000000; Loop++) {
+        if(Loop % 10 == 0) {
             if(toki.elapsed() > 0.9) break;
         }
         IterationControl<State> sera;
         //State ans = sera.anneal(0.01, 1e5, 1, State::initState());
         //State ans = sera.climb(0.0005, State::initState());
         //State ans = State::initState();
-        State ans = sera.climb(6, State::initState());
+        State ans  = sera.climb(6, State::initState());
         ans.output.stations = Utils::initStations();
         ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 2);
         auto [_route, _stations] = Utils::optimizeStations(ans.output.route);
         ans.output.route = move(_route);
         ans.output.stations = move(_stations);
+        ans.score = Utils::calcScore(ans.output).first;
+        if(ans.score > best_pre_score) {
+            best_pre_score = ans.score;
+        }
         //ans = sera.anneal(0.01, 1e5, 1, ans);
         //ans = sera.climb(0.0005, ans);
         ans = sera.climb(3, ans);
@@ -521,5 +561,6 @@ int main(int argc, char* argv[]) {
         }
     }
     best.output.print();
+    cerr << "[INFO] - main - Loop = " << Loop << "\n";
     cerr << "[INFO] - main - MyScore = " << best.score << "\n";
 }
