@@ -405,6 +405,8 @@ vector<Node> Utils::initStations() {
         if(num[i] > 0) {
             w_x[i] /= num[i];
             w_y[i] /= num[i];
+            w_x[i] = clamp(w_x[i] + ryuka.rand(100) - 50, 1LL, 999LL);
+            w_y[i] = clamp(w_y[i] + ryuka.rand(100) - 50, 1LL, 999LL);
         } else {
             int z = ryuka.rand(input.n);
             w_x[i] = clamp(input.planets[z].x + ryuka.rand(100) - 50, 1, 999);
@@ -498,7 +500,8 @@ int main(int argc, char* argv[]) {
         IterationControl<State> sera;
         //State ans = sera.anneal(0.01, 1e5, 1, State::initState());
         //State ans = sera.climb(0.0005, State::initState());
-        State ans = sera.climb(2, State::initState());
+        //State ans = State::initState();
+        State ans = sera.climb(6, State::initState());
         ans.output.stations = Utils::initStations();
         ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 2);
         auto [_route, _stations] = Utils::optimizeStations(ans.output.route);
@@ -506,7 +509,7 @@ int main(int argc, char* argv[]) {
         ans.output.stations = move(_stations);
         //ans = sera.anneal(0.01, 1e5, 1, ans);
         //ans = sera.climb(0.0005, ans);
-        ans = sera.climb(2, ans);
+        ans = sera.climb(3, ans);
         ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 2);
         auto [route, stations] = Utils::optimizeStations(ans.output.route);
         ans.output.route = move(route);
