@@ -620,8 +620,7 @@ int main(int argc, char* argv[]) {
                 e.y = ans.output.stations[e.id].y;
             }
         }
-        ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 2);
-        ans = sera.climb(3, ans);
+        ans = sera.climb(6, ans);
         ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 2);
         auto [route, stations] = Utils::optimizeStations(ans.output.route);
         ans.output.route = move(route);
