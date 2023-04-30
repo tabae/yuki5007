@@ -391,14 +391,13 @@ vector<Node> Utils::solveInsertedTSP() {
 vector<Node> Utils::initStationsGreedy(const vector<Node>& route) {
     vector<Node> res;
     vector<bool> seen(route.size(), false);
-    vector<int> unchecked_path(route.size()-1);
-    iota(unchecked_path.begin(), unchecked_path.end(), 0);
     for(int v = 0; v < input.m; v++) {
-        long long max_dist = 0, max_x = -1, max_y = -1;
-        for(int x = 25; x <= 975; x += 50) {
-            for(int y = 25; y <= 975; y += 50) {
+        long long max_dist = 0, max_x = -1, max_y;
+        for(int x = 100; x <= 900; x += 50) {
+            for(int y = 100; y <= 900; y += 50) {
                 long long dist = 0;
-                for(int i : unchecked_path) {
+                for(int i = 0; i < route.size() - 1; i++) {
+                    if(seen[i]) continue;
                     int cur_dist = Utils::calcSquareDistOnlyPlanets(route[i], route[i+1]) * input.a;
                     int tmp_dist = Utils::calcSquareDist(route[i], Node(x, y, v, false)) + Utils::calcSquareDist(route[i+1], Node(x, y, v, false));
                     if(cur_dist > tmp_dist) {
@@ -420,8 +419,6 @@ vector<Node> Utils::initStationsGreedy(const vector<Node>& route) {
                 seen[i] = true;
             }
         }
-        unchecked_path.clear();
-        for(int i = 0; i < route.size()-1; i++) if(!seen[i]) unchecked_path.push_back(i);
         res.push_back(Node(max_x, max_y, v, false));
     }
     return res;
@@ -601,14 +598,13 @@ int main(int argc, char* argv[]) {
             }
             return false;
         };
-        int prev_ret = f(ans);
-        if(prev_ret && Loop > 50) {
-            for(int chal = 0; chal < 5; chal++) {
+        bool ret = f(ans);
+        if(ret && Loop >= 500) {
+            for(int chal = 0; chal < 10; chal++) {
                 f(best);
             }
         }
     }
-    cerr << "[DEBUG] - main - best_score = " << best_score << "\n";
     while(toki.elapsed() < 0.95) {
         State ans = sera.climb(3, best);
         ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 2);
