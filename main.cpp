@@ -96,7 +96,8 @@ namespace Utils {
     bool isStart(const Node& node);
     pair<long long, long long> calcScore(const Output& output);
     long long calcScoreFromLength(long long length);
-    vector<Node> initStations();
+    vector<Node> initStationsKMeans();
+    vector<Node> initStationsGreedy(const vector<Node>& route);
     vector<Node> solveInsertedTSP();
     vector<Node> solveNNTSP();
     vector<Node> goThroughStations(vector<Node>, const vector<Node>& stations, int);
@@ -387,7 +388,43 @@ vector<Node> Utils::solveInsertedTSP() {
     return route;
 }
 
-vector<Node> Utils::initStations() {
+vector<Node> Utils::initStationsGreedy(const vector<Node>& route) {
+    vector<Node> res;
+    vector<bool> seen(route.size(), false);
+    for(int v = 0; v < input.m; v++) {
+        long long max_dist = 0, max_x = -1, max_y = -1;
+        for(int x = 50; x <= 950; x += 50) {
+            for(int y = 50; y <= 950; y += 50) {
+                long long dist = 0;
+                for(int i = 0; i < route.size() - 1; i++) {
+                    if(seen[i]) continue;
+                    int cur_dist = Utils::calcSquareDistOnlyPlanets(route[i], route[i+1]) * input.a;
+                    int tmp_dist = Utils::calcSquareDist(route[i], Node(x, y, v, false)) + Utils::calcSquareDist(route[i+1], Node(x, y, v, false));
+                    if(cur_dist > tmp_dist) {
+                        dist += cur_dist - tmp_dist;
+                    }
+                }       
+                if(dist > max_dist) {
+                    max_dist = dist;
+                    max_x = x;
+                    max_y = y;
+                }
+            }
+        }
+        assert(max_x != -1);
+        for(int i = 0; i < route.size() - 1; i++) {
+            int cur_dist = Utils::calcSquareDistOnlyPlanets(route[i], route[i+1]) * input.a;
+            int tmp_dist = Utils::calcSquareDist(route[i], Node(max_x, max_y, v, false)) + Utils::calcSquareDist(route[i+1], Node(max_x, max_y, v, false));        
+            if(cur_dist > tmp_dist) {
+                seen[i] = true;
+            }
+        }
+        res.push_back(Node(max_x, max_y, v, false));
+    }
+    return res;
+}
+
+vector<Node> Utils::initStationsKMeans() {
     vector<int> cluster(input.n, 0);
     for(int i = 0; i < input.n; i++) {
         cluster[i] = ryuka.rand(input.m);
@@ -531,14 +568,12 @@ int main(int argc, char* argv[]) {
     State best, best_pre;
     IterationControl<State> sera;
     for(Loop = 0; Loop < 10000000; Loop++) {
-        if(Loop % 10 == 0) {
-            if(toki.elapsed() > 0.8) break;
-        }
+        if(toki.elapsed() > 0.8) break;
         //State ans = sera.anneal(0.01, 1e5, 1, State::initState());
         //State ans = sera.climb(0.0005, State::initState());
         //State ans = State::initState();
         State ans  = sera.climb(6, State::initState());
-        ans.output.stations = Utils::initStations();
+        ans.output.stations = Utils::initStationsGreedy(ans.output.route);
         ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 2);
         auto [_route, _stations] = Utils::optimizeStations(ans.output.route);
         ans.output.route = move(_route);
@@ -563,13 +598,14 @@ int main(int argc, char* argv[]) {
             }
             return false;
         };
-        bool ret = f(ans);
-        if(ret && Loop >= 500) {
-            for(int chal = 0; chal < 10; chal++) {
+        int prev_ret = f(ans);
+        if(prev_ret && Loop > 50) {
+            for(int chal = 0; chal < 5; chal++) {
                 f(best);
             }
         }
     }
+    cerr << "[DEBUG] - main - best_score = " << best_score << "\n";
     while(toki.elapsed() < 0.95) {
         State ans = sera.climb(3, best);
         ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 2);
