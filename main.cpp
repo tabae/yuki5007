@@ -567,6 +567,11 @@ int main(int argc, char* argv[]) {
     long long best_score = 0, best_pre_score = 0;
     State best, best_pre;
     IterationControl<State> sera;
+    int delta_pos = 74;
+    #ifdef OPTUNA
+    delta_pos = atoi(argv[1]);
+    cerr << "delta is " << delta_pos << "\n";
+    #endif
     for(Loop = 0; Loop < 10000000; Loop++) {
         if(toki.elapsed() > 0.5) break;
         //State ans = sera.anneal(0.01, 1e5, 1, State::initState());
@@ -604,8 +609,8 @@ int main(int argc, char* argv[]) {
     while(toki.elapsed() < 0.95) {
         State ans = best;
         for(int i = 0; i < input.m; i++) {
-            ans.output.stations[i].x = clamp(ans.output.stations[i].x + ryuka.rand(30) - 15, 0, 1000);
-            ans.output.stations[i].y = clamp(ans.output.stations[i].y + ryuka.rand(30) - 15, 0, 1000);
+            ans.output.stations[i].x = clamp(ans.output.stations[i].x + ryuka.rand(delta_pos) - delta_pos / 2, 0, 1000);
+            ans.output.stations[i].y = clamp(ans.output.stations[i].y + ryuka.rand(delta_pos) - delta_pos / 2, 0, 1000);
         }
         for(Node& e: ans.output.route) {
             if(!Utils::isPlanet(e)) {
