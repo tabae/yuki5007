@@ -568,12 +568,13 @@ int main(int argc, char* argv[]) {
     State best, best_pre;
     IterationControl<State> sera;
     int delta_pos = 74;
+    float loop_time = 0.6;
     #ifdef OPTUNA
-    delta_pos = atoi(argv[1]);
-    cerr << "delta is " << delta_pos << "\n";
+    loop_time = atof(argv[1]);
+    //cerr << "delta is " << delta_pos << "\n";
     #endif
     for(Loop = 0; Loop < 10000000; Loop++) {
-        if(toki.elapsed() > 0.5) break;
+        if(toki.elapsed() > loop_time) break;
         //State ans = sera.anneal(0.01, 1e5, 1, State::initState());
         //State ans = sera.climb(0.0005, State::initState());
         //State ans = State::initState();
