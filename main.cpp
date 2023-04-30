@@ -568,7 +568,7 @@ int main(int argc, char* argv[]) {
     State best, best_pre;
     IterationControl<State> sera;
     for(Loop = 0; Loop < 10000000; Loop++) {
-        if(toki.elapsed() > 0.8) break;
+        if(toki.elapsed() > 0.5) break;
         //State ans = sera.anneal(0.01, 1e5, 1, State::initState());
         //State ans = sera.climb(0.0005, State::initState());
         //State ans = State::initState();
@@ -599,14 +599,21 @@ int main(int argc, char* argv[]) {
             return false;
         };
         bool ret = f(ans);
-        if(ret && Loop >= 500) {
-            for(int chal = 0; chal < 10; chal++) {
-                f(best);
+    }
+    cerr << "[DEBUG] - main - best_score = " << best_score << "\n";
+    while(toki.elapsed() < 0.95) {
+        State ans = best;
+        for(int i = 0; i < input.m; i++) {
+            ans.output.stations[i].x = clamp(ans.output.stations[i].x + ryuka.rand(30) - 15, 0, 1000);
+            ans.output.stations[i].y = clamp(ans.output.stations[i].y + ryuka.rand(30) - 15, 0, 1000);
+        }
+        for(Node& e: ans.output.route) {
+            if(!Utils::isPlanet(e)) {
+                e.x = ans.output.stations[e.id].x;
+                e.y = ans.output.stations[e.id].y;
             }
         }
-    }
-    while(toki.elapsed() < 0.95) {
-        State ans = sera.climb(3, best);
+        ans = sera.climb(3, ans);
         ans.output.route = Utils::goThroughStations(ans.output.route, ans.output.stations, 2);
         auto [route, stations] = Utils::optimizeStations(ans.output.route);
         ans.output.route = move(route);
